@@ -17,7 +17,11 @@ void script_done(lua_State *, stats *, stats *);
 
 void script_init(lua_State *, thread *, int, char **);
 uint64_t script_delay(lua_State *);
+#if (HAVE_DEMIKERNEL)
+void script_request(lua_State *, demi_sgarray_t *, char **, size_t *);
+#else
 void script_request(lua_State *, char **, size_t *);
+#endif
 void script_response(lua_State *, int, buffer *, buffer *);
 size_t script_verify_request(lua_State *L);
 

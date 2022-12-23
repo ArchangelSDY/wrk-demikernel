@@ -35,6 +35,10 @@
 
 #include <time.h>
 
+#if (HAVE_DEMIKERNEL)
+#include <demi/types.h>
+#endif
+
 #define AE_OK 0
 #define AE_ERR -1
 
@@ -67,6 +71,11 @@ typedef struct aeFileEvent {
     aeFileProc *rfileProc;
     aeFileProc *wfileProc;
     void *clientData;
+#if (HAVE_DEMIKERNEL)
+    int pending;
+    demi_sgarray_t rsga;
+    size_t readable;
+#endif
 } aeFileEvent;
 
 /* Time event structure */
@@ -119,5 +128,9 @@ char *aeGetApiName(void);
 void aeSetBeforeSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *beforesleep);
 int aeGetSetSize(aeEventLoop *eventLoop);
 int aeResizeSetSize(aeEventLoop *eventLoop, int setsize);
+
+#if (HAVE_DEMIKERNEL)
+void aeRegisterQToken(aeEventLoop *eventLoop, demi_qtoken_t qt);
+#endif
 
 #endif

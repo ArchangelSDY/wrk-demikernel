@@ -45,6 +45,12 @@ else
 	DEPS += $(ODIR)/lib/libssl.a
 endif
 
+ifneq ($(WITH_DEMIKERNEL),)
+	LIBS += -ldemikernel
+	CFLAGS  += -DHAVE_DEMIKERNEL=1 -I$(WITH_DEMIKERNEL)/include
+	LDFLAGS += -L$(WITH_DEMIKERNEL)/lib
+endif
+
 all: $(BIN)
 
 clean:

@@ -44,18 +44,26 @@
 #include "zmalloc.h"
 #include "config.h"
 
+#if (HAVE_DEMIKERNEL)
+#include "wrk.h"
+#endif
+
 /* Include the best multiplexing layer supported by this system.
  * The following should be ordered by performances, descending. */
 #ifdef HAVE_EVPORT
 #include "ae_evport.c"
 #else
-    #ifdef HAVE_EPOLL
-    #include "ae_epoll.c"
+    #ifdef HAVE_DEMIKERNEL
+    #include "ae_demikernel.c"
     #else
-        #ifdef HAVE_KQUEUE
-        #include "ae_kqueue.c"
+        #ifdef HAVE_EPOLL
+        #include "ae_epoll.c"
         #else
-        #include "ae_select.c"
+            #ifdef HAVE_KQUEUE
+            #include "ae_kqueue.c"
+            #else
+            #include "ae_select.c"
+            #endif
         #endif
     #endif
 #endif
@@ -78,8 +86,13 @@ aeEventLoop *aeCreateEventLoop(int setsize) {
     if (aeApiCreate(eventLoop) == -1) goto err;
     /* Events with mask == AE_NONE are not set. So let's initialize the
      * vector with it. */
-    for (i = 0; i < setsize; i++)
+    for (i = 0; i < setsize; i++) {
         eventLoop->events[i].mask = AE_NONE;
+#if (HAVE_DEMIKERNEL)
+        eventLoop->events[i].pending = AE_NONE;
+        eventLoop->events[i].readable = 0;
+#endif
+    }
     return eventLoop;
 
 err:
@@ -116,8 +129,13 @@ int aeResizeSetSize(aeEventLoop *eventLoop, int setsize) {
 
     /* Make sure that if we created new slots, they are initialized with
      * an AE_NONE mask. */
-    for (i = eventLoop->maxfd+1; i < setsize; i++)
+    for (i = eventLoop->maxfd+1; i < setsize; i++) {
         eventLoop->events[i].mask = AE_NONE;
+#if (HAVE_DEMIKERNEL)
+        eventLoop->events[i].pending = AE_NONE;
+        eventLoop->events[i].readable = 0;
+#endif
+    }
     return AE_OK;
 }
 
@@ -140,6 +158,13 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         return AE_ERR;
     }
     aeFileEvent *fe = &eventLoop->events[fd];
+
+#if (HAVE_DEMIKERNEL)
+    if (fe->pending == AE_NONE) {
+        demi_sgafree(&fe->rsga);
+        fe->readable = 0;
+    }
+#endif
 
     if (aeApiAddEvent(eventLoop, fd, mask) == -1)
         return AE_ERR;

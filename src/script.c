@@ -6,6 +6,10 @@
 #include "http_parser.h"
 #include "zmalloc.h"
 
+#if (HAVE_DEMIKERNEL)
+#include <demi/sga.h>
+#endif
+
 typedef struct {
     char *name;
     int   type;
@@ -149,7 +153,11 @@ uint64_t script_delay(lua_State *L) {
     return delay;
 }
 
+#if (HAVE_DEMIKERNEL)
+void script_request(lua_State *L, demi_sgarray_t *request_buf, char **buf, size_t *len) {
+#else
 void script_request(lua_State *L, char **buf, size_t *len) {
+#endif
     int pop = 1;
     lua_getglobal(L, "request");
     if (!lua_isfunction(L, -1)) {
@@ -159,7 +167,16 @@ void script_request(lua_State *L, char **buf, size_t *len) {
     }
     lua_call(L, 0, 1);
     const char *str = lua_tolstring(L, -1, len);
+#if (HAVE_DEMIKERNEL)
+    if (request_buf->sga_numsegs != 0) {
+        demi_sgafree(request_buf);
+    }
+
+    *request_buf = demi_sgaalloc(*len);
+    *buf = request_buf->sga_segs[0].sgaseg_buf;
+#else
     *buf = realloc(*buf, *len);
+#endif
     memcpy(*buf, str, *len);
     lua_pop(L, pop);
 }
@@ -272,8 +289,15 @@ size_t script_verify_request(lua_State *L) {
     http_parser parser;
     char *request = NULL;
     size_t len, count = 0;
+#if (HAVE_DEMIKERNEL)
+    demi_sgarray_t request_buf = { 0 };
+#endif
 
+#if (HAVE_DEMIKERNEL)
+    script_request(L, &request_buf, &request, &len);
+#else
     script_request(L, &request, &len);
+#endif
     http_parser_init(&parser, HTTP_REQUEST);
     parser.data = &count;
 
@@ -296,6 +320,10 @@ size_t script_verify_request(lua_State *L) {
         fprintf(stderr, "%s at %d:%d\n", msg, line, column);
         exit(1);
     }
+
+#if (HAVE_DEMIKERNEL)
+    demi_sgafree(&request_buf);
+#endif
 
     return count;
 }

@@ -60,7 +60,13 @@ typedef struct connection {
     uint64_t pending;
     buffer headers;
     buffer body;
+#if (HAVE_DEMIKERNEL)
+    char *buf;
+    demi_sgarray_t request_buf;
+    demi_sgarray_t response_buf;
+#else
     char buf[RECVBUF];
+#endif
 } connection;
 
 #endif /* WRK_H */

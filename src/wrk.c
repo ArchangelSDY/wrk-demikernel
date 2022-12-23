@@ -67,6 +67,12 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+#if (HAVE_DEMIKERNEL)
+    if (demi_init(argc, argv) != 0) {
+        exit(1);
+    }
+#endif
+
     char *schema  = copy_url_part(url, &parts, UF_SCHEMA);
     char *host    = copy_url_part(url, &parts, UF_HOST);
     char *port    = copy_url_part(url, &parts, UF_PORT);
@@ -103,7 +109,11 @@ int main(int argc, char **argv) {
 
     for (uint64_t i = 0; i < cfg.threads; i++) {
         thread *t      = &threads[i];
-        t->loop        = aeCreateEventLoop(10 + cfg.connections * 3);
+        t->loop        = aeCreateEventLoop(10 + cfg.connections * 3
+#if (HAVE_DEMIKERNEL)
+                + 1000000
+#endif
+                );
         t->connections = cfg.connections / cfg.threads;
 
         t->L = script_create(cfg.script, url, headers);
@@ -204,9 +214,16 @@ void *thread_main(void *arg) {
 
     char *request = NULL;
     size_t length = 0;
+#if (HAVE_DEMIKERNEL)
+    demi_sgarray_t request_buf = { 0 };
+#endif
 
     if (!cfg.dynamic) {
+#if (HAVE_DEMIKERNEL)
+        script_request(thread->L, &request_buf, &request, &length);
+#else
         script_request(thread->L, &request, &length);
+#endif
     }
 
     thread->cs = zcalloc(thread->connections * sizeof(connection));
@@ -216,6 +233,9 @@ void *thread_main(void *arg) {
         c->thread = thread;
         c->ssl     = cfg.ctx ? SSL_new(cfg.ctx) : NULL;
         c->request = request;
+#if (HAVE_DEMIKERNEL)
+        c->request_buf = request_buf;
+#endif
         c->length  = length;
         c->delayed = cfg.delay;
         connect_socket(thread, c);
@@ -238,6 +258,24 @@ static int connect_socket(thread *thread, connection *c) {
     struct aeEventLoop *loop = thread->loop;
     int fd, flags;
 
+#if (HAVE_DEMIKERNEL)
+    int err;
+    demi_qtoken_t qt;
+
+    err = demi_socket(&fd, addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+    if (err) {
+        thread->errors.connect++;
+        return -1;
+    }
+
+    err = demi_connect(&qt, fd, addr->ai_addr, addr->ai_addrlen);
+    if (err) {
+        goto error;
+    }
+
+    aeRegisterQToken(loop, qt);
+
+#else
     fd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
 
     flags = fcntl(fd, F_GETFL, 0);
@@ -250,6 +288,8 @@ static int connect_socket(thread *thread, connection *c) {
     flags = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flags, sizeof(flags));
 
+#endif
+
     flags = AE_READABLE | AE_WRITABLE;
     if (aeCreateFileEvent(loop, fd, flags, socket_connected, c) == AE_OK) {
         c->parser.data = c;
@@ -259,14 +299,22 @@ static int connect_socket(thread *thread, connection *c) {
 
   error:
     thread->errors.connect++;
+#if (HAVE_DEMIKERNEL)
+    demi_close(fd);
+#else
     close(fd);
+#endif
     return -1;
 }
 
 static int reconnect_socket(thread *thread, connection *c) {
     aeDeleteFileEvent(thread->loop, c->fd, AE_WRITABLE | AE_READABLE);
     sock.close(c);
+#if (HAVE_DEMIKERNEL)
+    demi_close(c->fd);
+#else
     close(c->fd);
+#endif
     return connect_socket(thread, c);
 }
 
@@ -394,7 +442,11 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
 
     if (!c->written) {
         if (cfg.dynamic) {
+#if (HAVE_DEMIKERNEL)
+            script_request(thread->L, &c->request_buf, &c->request, &c->length);
+#else
             script_request(thread->L, &c->request, &c->length);
+#endif
         }
         c->start   = time_us();
         c->pending = cfg.pipeline;
@@ -438,6 +490,10 @@ static void socket_readable(aeEventLoop *loop, int fd, void *data, int mask) {
         if (n == 0 && !http_body_is_final(&c->parser)) goto error;
 
         c->thread->bytes += n;
+#if (HAVE_DEMIKERNEL)
+    demi_sgafree(&c->response_buf);
+    c->buf = NULL;
+#endif
     } while (n == RECVBUF && sock.readable(c) > 0);
 
     return;

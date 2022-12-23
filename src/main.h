@@ -25,6 +25,13 @@
 #include "units.h"
 #include "zmalloc.h"
 
+#if (HAVE_DEMIKERNEL)
+#include <demi/libos.h>
+#include <demi/types.h>
+#include <demi/sga.h>
+#include <demi/wait.h>
+#endif
+
 struct config;
 
 static void *thread_main(void *);
