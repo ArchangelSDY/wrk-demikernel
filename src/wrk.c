@@ -152,8 +152,19 @@ int main(int argc, char **argv) {
     uint64_t complete = 0;
     uint64_t bytes    = 0;
     errors errors     = { 0 };
+    struct timespec duration = {
+        .tv_sec = cfg.duration,
+        .tv_nsec = 0
+    };
 
-    sleep(cfg.duration);
+    while (1) {
+        if (nanosleep(&duration, &duration) == 0) {
+            break;
+        } else if (errno != ETIMEDOUT) {
+            fprintf(stderr, "sleep interrupted: %s\n", strerror(errno));
+            break;
+        }
+    }
     stop = 1;
 
     for (uint64_t i = 0; i < cfg.threads; i++) {
