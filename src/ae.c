@@ -89,7 +89,9 @@ aeEventLoop *aeCreateEventLoop(int setsize) {
     for (i = 0; i < setsize; i++) {
         eventLoop->events[i].mask = AE_NONE;
 #if (HAVE_DEMIKERNEL)
-        eventLoop->events[i].pending = AE_NONE;
+        eventLoop->events[i].connecting = 0;
+        eventLoop->events[i].reading = 0;
+        eventLoop->events[i].writing = 0;
         eventLoop->events[i].readable = 0;
 #endif
     }
@@ -132,7 +134,9 @@ int aeResizeSetSize(aeEventLoop *eventLoop, int setsize) {
     for (i = eventLoop->maxfd+1; i < setsize; i++) {
         eventLoop->events[i].mask = AE_NONE;
 #if (HAVE_DEMIKERNEL)
-        eventLoop->events[i].pending = AE_NONE;
+        eventLoop->events[i].connecting = 0;
+        eventLoop->events[i].reading = 0;
+        eventLoop->events[i].writing = 0;
         eventLoop->events[i].readable = 0;
 #endif
     }
@@ -160,9 +164,12 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
     aeFileEvent *fe = &eventLoop->events[fd];
 
 #if (HAVE_DEMIKERNEL)
-    if (fe->pending == AE_NONE) {
+    if (fe->connecting) {
         demi_sgafree(&fe->rsga);
+        fe->reading = 0;
+        fe->writing = 0;
         fe->readable = 0;
+        fe->fail = 0;
     }
 #endif
 

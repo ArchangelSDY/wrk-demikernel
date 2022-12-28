@@ -284,6 +284,8 @@ static int connect_socket(thread *thread, connection *c) {
         goto error;
     }
 
+    (&loop->events[fd])->connecting = 1;
+
     aeRegisterQToken(loop, qt);
 
 #else

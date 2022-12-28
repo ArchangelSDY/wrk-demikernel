@@ -40,7 +40,11 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
 }
 
 static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
-    return;
+    aeFileEvent *fe = &eventLoop->events[fd];
+    fe->connecting = 0;
+    fe->reading = 0;
+    fe->writing = 0;
+    fe->fail = 0;
 }
 
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
@@ -65,12 +69,12 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
         switch (qr.qr_opcode) {
             case DEMI_OPC_PUSH:
                 mask |= AE_WRITABLE;
-                fe->pending &= ~AE_WRITABLE;
+                fe->writing = 0;
                 break;
 
             case DEMI_OPC_POP:
                 mask |= AE_READABLE;
-                fe->pending &= ~AE_READABLE;
+                fe->reading = 0;
                 fe->rsga = qr.qr_value.sga;
                 fe->readable = fe->rsga.sga_segs[0].sgaseg_len;
                 break;
@@ -78,6 +82,11 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
             case DEMI_OPC_CONNECT:
                 mask |= AE_WRITABLE;
                 mask |= AE_READABLE;
+                fe->connecting = 0;
+                break;
+
+            case DEMI_OPC_FAILED:
+                fe->fail = 1;
                 break;
 
             default:
@@ -97,13 +106,13 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
         fe = &eventLoop->events[i];
         mask = 0;
 
-        if (fe->pending == AE_NONE && fe->mask == AE_NONE) {
+        if (fe->connecting || fe->fail) {
             continue;
         }
-        if (!(fe->pending & AE_READABLE)) {
+        if (!fe->reading) {
             mask |= AE_READABLE;
         }
-        if (!(fe->pending & AE_WRITABLE)) {
+        if (!fe->writing) {
             mask |= AE_WRITABLE;
         }
 

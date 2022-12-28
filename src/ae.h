@@ -72,7 +72,10 @@ typedef struct aeFileEvent {
     aeFileProc *wfileProc;
     void *clientData;
 #if (HAVE_DEMIKERNEL)
-    int pending;
+    int connecting:1;
+    int reading:1;
+    int writing:1;
+    int fail:1;
     demi_sgarray_t rsga;
     size_t readable;
 #endif

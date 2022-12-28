@@ -22,6 +22,9 @@ status sock_read(connection *c, size_t *n) {
 #if (HAVE_DEMIKERNEL)
     aeFileEvent *fe = &c->thread->loop->events[c->fd];
     demi_qtoken_t qt;
+    if (fe->fail) {
+        return ERROR;
+    }
     if (fe->readable) {
         *n = (size_t) fe->readable;
         c->response_buf = fe->rsga;
@@ -29,12 +32,12 @@ status sock_read(connection *c, size_t *n) {
         fe->readable = 0;
         return OK;
     }
-    if (!(fe->pending & AE_READABLE)) {
+    if (!fe->reading) {
         if (demi_pop(&qt, c->fd) != 0) {
             return ERROR;
         }
 
-        fe->pending |= AE_READABLE;
+        fe->reading = 1;
 
         aeRegisterQToken(c->thread->loop, qt);
 
@@ -56,14 +59,17 @@ status sock_write(connection *c, char *buf, size_t len, size_t *n) {
     }
     aeFileEvent *fe = &c->thread->loop->events[c->fd];
     demi_qtoken_t qt;
-    if (fe->pending & AE_WRITABLE) {
+    if (fe->fail) {
+        return ERROR;
+    }
+    if (fe->writing) {
         *n = 0;
         return RETRY;
     }
     if (demi_push(&qt, c->fd, &c->request_buf) != 0) {
         return ERROR;
     }
-    fe->pending |= AE_WRITABLE;
+    fe->writing = 1;
     aeRegisterQToken(c->thread->loop, qt);
     *n = len;
     return OK;
